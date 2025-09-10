@@ -4,6 +4,7 @@
 # - Mirrors sources (this dir) to /usr/src/snd-hda-codec-cs8409-1.0+dkms/
 # - Registers with DKMS, builds, installs, and (optionally) reloads
 # - Requires: build-essential, dkms, kmod, rsync, linux-headers-<kver>
+# - AUTOINSTALL="yes" in dkms.conf ensures automatic rebuilds on kernel updates
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -61,6 +62,21 @@ for kv in "${TARGETS[@]}"; do
     warn "No headers for ${kv}"
   fi
 done
+
+# ---------- ensure DKMS tree exists & is writable (NEW) ----------
+if [[ ! -d /var/lib/dkms ]]; then
+  info "Creating /var/lib/dkms …"
+  install -d -m 0755 -o root -g root /var/lib/dkms
+fi
+if ! touch /var/lib/dkms/.writetest 2>/dev/null; then
+  warn "/var/lib/dkms not writable; attempting dkms reinstall …"
+  apt-get --reinstall install -y dkms
+  # retry
+  if ! touch /var/lib/dkms/.writetest 2>/dev/null; then
+    die "/var/lib/dkms is still not writable after dkms reinstall. Check filesystem permissions/mount."
+  fi
+fi
+rm -f /var/lib/dkms/.writetest
 
 # ---------- sanity ----------
 [[ -f dkms.conf ]] || die "dkms.conf not found in current directory. Run from repo root."
