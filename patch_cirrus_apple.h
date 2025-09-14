@@ -2482,6 +2482,9 @@ static struct cs8409_apple_spec *cs8409_apple_alloc_spec(struct hda_codec *codec
 }
 
 
+/* ---- Minimal S3/S2idle-Resume prototypes (Apple CS42L83) ---- */
+static int cs_8409_apple_suspend(struct hda_codec *codec);
+static int cs_8409_apple_resume(struct hda_codec *codec);
 static int patch_cs8409_apple(struct hda_codec *codec)
 {
         struct cs8409_apple_spec *spec;
@@ -3081,3 +3084,4 @@ static void cs_8409_set_extended_codec_verb(void)
 #endif
 
 
+/* ---- Minimal S3/S2idle-Resume support (Apple CS42L83) ---- */
