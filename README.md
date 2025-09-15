@@ -56,8 +56,6 @@ Intel Macs with **CS8409 + CS42L42** audio path, typically:
 
 ## Requirements
 
-> This repo **does not** include a kernel checker/updater. If you need a newer kernel, use your distro’s approach (e.g., Debian Backports or Ubuntu HWE).
-
 - **Debian 12/13** or **Ubuntu 22.04/24.04** (or newer)
 - **Kernel headers** for your running kernel (e.g. `linux-headers-$(uname -r)`)
 - Tools: `git`, `build-essential` (or `base-devel` equivalent), `dkms`, `kmod`, `rsync`, `patch`, `pciutils`, `alsa-utils`, `pavucontrol`, `pulseaudio-utils`
