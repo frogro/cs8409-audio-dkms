@@ -7,7 +7,7 @@ On these machines, users frequently hit **“no sound”** because the Linux ker
 - **What you get**
   - **Sound out of the box** on supported Macs (speakers/headphones, HDA controls).
   - **DKMS auto‑rebuild** across kernel upgrades (solves “no sound after kernel update”).
-  - Optional **resume fix** (“no sound after suspend”) via a minimal **systemd sleep hook** and recommended runtime settings for T2 hardware.
+  - **Suspend/resume fix** (“no sound after suspend”), via a minimal **systemd sleep hook** and recommended runtime settings for T2 hardware.
   - A clean uninstall path.
 
 > This repository ships **no proprietary firmware**. It provides **open driver sources** for the HDA codec path and integrates them via **DKMS**. It also applies optional configuration to improve **suspend/resume** on T2‑era Macs.
@@ -17,7 +17,7 @@ On these machines, users frequently hit **“no sound”** because the Linux ker
 ## Supported hardware (examples)
 
 Intel Macs with **CS8409 + CS42L42** audio path, typically:
-- **iMac 2019/2020** (`iMac19,1`, `iMac19,2`, `iMac20,1`, `iMac20,2`)
+- **iMac 2019/2020** (`iMac19,1`, `iMac20,1`, `iMac20,2`)
 - **MacBook Pro 2018–2020** (`MacBookPro15,x`, `MacBookPro16,x`)
 - **Mac mini 2018** (`Macmini8,1`)
 - **iMac Pro** (`iMacPro1,1`)
@@ -40,20 +40,18 @@ Intel Macs with **CS8409 + CS42L42** audio path, typically:
 3. **Apply runtime settings for T2 stability**
    - Writes **recommended kernel parameters** for T2 audio:  
      `snd_hda_intel.dmic_detect=0 mem_sleep_default=s2idle`
-   - Offers to install a **minimal systemd sleep hook** (xHCI / s2idle workaround) to avoid **“no sound after suspend”** on affected models. If accepted, the installer places:  
-     - the helper script: `/usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh`  
-     - the configuration file: `/etc/default/xhci-s2idle.default`
+   - By default, installs a **minimal systemd sleep hook** (xHCI / s2idle workaround) to avoid **“no sound after suspend”** on affected models. You can **disable** it with `--no-suspend-patch`.
    - Reloads the HDA stack and prints a short report (`aplay -l`, relevant `dmesg`).
 
 4. **Uninstall helpers**
-   - Includes a removal path to **unregister** the DKMS package and **revert optional settings**, i.e. **removing the installed sleep hook and its config**.
+   - Includes a removal path to **unregister** the DKMS package and **revert optional settings**, i.e. **removing the installed sleep hook and its config** (`/usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh`, `/etc/default/xhci-s2idle.default`).
 
 ---
 
 ## Highlights (what makes this repo special)
 
 - **No sound after kernel update?** Solved by **DKMS**: the module auto‑rebuilds whenever the kernel is updated.
-- **No sound after suspend/resume?** Mitigated by a **tested s2idle + xHCI sleep hook** (optional) and runtime settings tailored for T2 Macs.
+- **No sound after suspend/resume?** Mitigated by a **tested s2idle + xHCI sleep hook** (enabled by default) and runtime settings tailored for T2 Macs.
 - **Community integration**: a **curated, forward‑compatible** packaging of community driver improvements with maintenance glue for current kernels.
 
 ---
@@ -87,19 +85,20 @@ After installation, you should see devices under `aplay -l`. If audio is muted, 
 
 ---
 
-## Command‑line options (as implemented by this repo)
+## Command‑line options (exactly as in `install.sh`)
 
 ```
-sudo ./install.sh [--yes] [--install-sleep-hook|--no-sleep-hook] [--dry-run] [--uninstall] [--verbose]
+Usage: sudo ./install.sh [--kver <ver>]... [--all-installed] [--no-reload] [--no-suspend-patch]
+Default: build for the running kernel and apply suspend patch
 ```
 
-- `--yes`, `-y` — assume “yes” to prompts (non‑interactive).
-- `--install-sleep-hook` / `--no-sleep-hook` — explicitly enable/disable the **xHCI s2idle** hook (otherwise you’ll be prompted interactively).
-- `--dry-run` — simulate actions without changing the system.
-- `--uninstall` — remove the DKMS module and revert optional settings (incl. the sleep hook and its config).
-- `--verbose` — show more build/log output.
+- `--kver <ver>` — build for a specific kernel version (can be used multiple times).
+- `--all-installed` — build for **all** installed kernels on this system.
+- `--no-reload` — do **not** reload the driver stack immediately after install.
+- `--no-suspend-patch` — skip installing the s2idle/xHCI suspend patch and GRUB flags.
+- `-h`, `--help` — show usage.
 
-> Note: The installer **always** writes the recommended kernel parameters for T2 audio support.
+> Note: The installer sets the recommended kernel parameters unless `--no-suspend-patch` is supplied.
 
 ---
 
@@ -131,7 +130,7 @@ sudo rm -f /etc/default/xhci-s2idle.default
   - Look for errors: `dmesg | egrep -i 'cs8409|cs42l42|hda|firmware' | tail -n 200`.
 
 - **No sound after suspend**
-  - Ensure the **xHCI s2idle** hook is enabled and the system uses `s2idle` (the installer can set this up).
+  - Ensure the **xHCI s2idle** hook is enabled and the system uses `s2idle`.
   - Reboot after enabling.
 
 - **Module builds but does not load (Secure Boot)**
