@@ -131,13 +131,24 @@ fi
 info "Recent dmesg (HDA/CS8409):"
 dmesg | egrep -i 'cs8409|cirrus|hda' | tail -n 80 || true
 
-bold "Installation finished."
-if printf '%s\n' "${TARGETS[@]}" | grep -qx "${running_kv}"; then
-  read -r -p $'\nDo you want to reboot now to activate the audio driver? [y/N] ' yn || true
-  case "${yn:-N}" in
-    y|Y) info "Rebooting…"; sleep 1; reboot ;;
-    *)   ok "Reboot skipped." ;;
-  esac
+# --- Suspend-Patch (s2idle + xHCI-Hook) ------------------------------------
+# apply-suspend-patch.sh liegt im Repo-Stammverzeichnis
+ROOTDIR="$(cd "$(dirname "$0")"/.. && pwd)"
+if [ -x "$ROOTDIR/apply-suspend-patch.sh" ]; then
+  echo
+  bold "Applying suspend patch (s2idle + xHCI hook)…"
+  if ! "$ROOTDIR/apply-suspend-patch.sh"; then
+    warn "suspend patch finished with non-zero status"
+  fi
 else
-  printf "\nIf your *running* kernel (%s) is not among the built targets, please reboot into one of: %s.\n" "$running_kv" "${TARGETS[*]}"
+  warn "$ROOTDIR/apply-suspend-patch.sh not found or not executable; skipping suspend patch."
 fi
+
+# --- Reboot-Dialog ganz zum Schluss ----------------------------------------
+bold "Installation finished."
+echo
+read -r -p "Reboot now to activate audio driver & suspend fix? [y/N] " yn || true
+case "${yn:-N}" in
+  y|Y) info "Rebooting…"; sleep 1; reboot ;;
+  *)   ok "Reboot skipped. Please reboot later so GRUB & the sleep hook become active." ;;
+esac
