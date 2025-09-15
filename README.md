@@ -17,7 +17,7 @@ On these machines, users frequently hit **“no sound”** because the Linux ker
 ## Supported hardware (examples)
 
 Intel Macs with **CS8409 + CS42L42** audio path, typically:
-- **iMac 2019/2020** (`iMac19,1`, `iMac20,1`, `iMac20,2`)
+- **iMac 2019/2020** (`iMac19,1`, `iMac19,2`, `iMac20,1`, `iMac20,2`)
 - **MacBook Pro 2018–2020** (`MacBookPro15,x`, `MacBookPro16,x`)
 - **Mac mini 2018** (`Macmini8,1`)
 - **iMac Pro** (`iMacPro1,1`)
@@ -30,33 +30,34 @@ Intel Macs with **CS8409 + CS42L42** audio path, typically:
 
 1. **Sanity checks & prerequisites**
    - Ensures **root**, verifies required tools and **kernel headers** are present.
-   - Detects a compatible Mac model and running kernel.
+   - Detects the **running kernel** (and any installed kernels) to determine **DKMS build targets**.  
+     **Note:** This repo does **not** check or update your kernel (unlike the Wi‑Fi wrapper).
 
 2. **Build & install via DKMS**
    - Registers the module (e.g. `snd-hda-codec-cs8409`) with **DKMS**.
-   - Builds against your current headers and **installs** it for **all installed kernels**.
+   - Builds against your current headers and **installs** it for **all installed kernels** (or specific targets you select via flags below).
    - Ensures automatic **rebuild on future kernel updates**.
 
 3. **Apply runtime settings for T2 stability**
    - Writes **recommended kernel parameters** for T2 audio:  
      `snd_hda_intel.dmic_detect=0 mem_sleep_default=s2idle`
-   - By default, installs a **minimal systemd sleep hook** (xHCI / s2idle workaround) to avoid **“no sound after suspend”** on affected models. You can **disable** it with `--no-suspend-patch`.
+   - By default, installs a **minimal systemd sleep hook** (xHCI / s2idle workaround) to avoid **“no sound after suspend”** on affected models. Use `--no-suspend-patch` to skip.
+
+     Installs:
+
+     - helper script: `/usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh`
+
+     - config file: `/etc/default/xhci-s2idle.default`
    - Reloads the HDA stack and prints a short report (`aplay -l`, relevant `dmesg`).
 
 4. **Uninstall helpers**
-   - Includes a removal path to **unregister** the DKMS package and **revert optional settings**, i.e. **removing the installed sleep hook and its config** (`/usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh`, `/etc/default/xhci-s2idle.default`).
-
----
-
-## Highlights (what makes this repo special)
-
-- **No sound after kernel update?** Solved by **DKMS**: the module auto‑rebuilds whenever the kernel is updated.
-- **No sound after suspend/resume?** Mitigated by a **tested s2idle + xHCI sleep hook** (enabled by default) and runtime settings tailored for T2 Macs.
-- **Community integration**: a **curated, forward‑compatible** packaging of community driver improvements with maintenance glue for current kernels.
+   - Provides steps to **unregister** the DKMS package and **revert optional settings** (sleep hook + config).
 
 ---
 
 ## Requirements
+
+> This repo **does not** include a kernel checker/updater. If you need a newer kernel, use your distro’s approach (e.g., Debian Backports or Ubuntu HWE).
 
 - **Debian 12/13** or **Ubuntu 22.04/24.04** (or newer)
 - **Kernel headers** for your running kernel (e.g. `linux-headers-$(uname -r)`)
@@ -87,6 +88,9 @@ After installation, you should see devices under `aplay -l`. If audio is muted, 
 
 ## Command‑line options (exactly as in `install.sh`)
 
+> These options select **which kernel versions** the DKMS module is built for and how the install behaves.  
+> They **do not** check or upgrade your kernel.
+
 ```
 Usage: sudo ./install.sh [--kver <ver>]... [--all-installed] [--no-reload] [--no-suspend-patch]
 Default: build for the running kernel and apply suspend patch
@@ -98,7 +102,25 @@ Default: build for the running kernel and apply suspend patch
 - `--no-suspend-patch` — skip installing the s2idle/xHCI suspend patch and GRUB flags.
 - `-h`, `--help` — show usage.
 
-> Note: The installer sets the recommended kernel parameters unless `--no-suspend-patch` is supplied.
+---
+
+## Installer mapping / File layout
+
+- **DKMS name & version:** read from `dkms.conf` (`PACKAGE_NAME`, `PACKAGE_VERSION`) — typically `snd-hda-codec-cs8409` and a repo version.  
+  **DKMS source dir:** `/usr/src/<DKMS_NAME>-<DKMS_VER>/`
+- **Built module install path (per kernel):** standard DKMS location under  
+  `/lib/modules/<kver>/updates/dkms/`
+- **Sleep hook script (if enabled):**  
+  `/usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh`
+- **Sleep hook config:**  
+  `/etc/default/xhci-s2idle.default`
+- **GRUB config touched:**  
+  `/etc/default/grub` (parameters: `snd_hda_intel.dmic_detect=0 mem_sleep_default=s2idle` → apply with `update-grub`)
+- **Modules (re)loaded by the installer:**  
+  `snd_hda_intel`, `snd_hda_codec`, `snd_hda_codec_cs8409`
+
+> Note: Some distros may use `/lib/systemd/system-sleep/` instead of `/usr/lib/systemd/system-sleep/`. The installer uses the path shown above.
+
 
 ---
 
@@ -118,6 +140,16 @@ sudo modprobe snd_hda_intel && sudo modprobe snd_hda_codec && sudo modprobe snd_
 # Remove optional sleep hook + config (if installed)
 sudo rm -f /usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh
 sudo rm -f /etc/default/xhci-s2idle.default
+```
+
+### Revert the recommended GRUB kernel parameters (optional)
+
+If you previously allowed the installer to add `snd_hda_intel.dmic_detect=0` and `mem_sleep_default=s2idle`, you can remove them:
+
+```bash
+sudo cp /etc/default/grub /etc/default/grub.bak.$(date +%F)
+sudo sed -i 's/ *snd_hda_intel.dmic_detect=0//; s/ *mem_sleep_default=s2idle//' /etc/default/grub
+sudo update-grub
 ```
 
 ---
@@ -154,8 +186,8 @@ sudo alsactl info
 
 This project **builds on and integrates** work from:
 - The **Linux kernel ALSA HDA** subsystem (including `snd-hda-codec-cs8409` and related Cirrus codec pieces).
-- Community driver work by **egorenar** and contributors: <https://github.com/egorenar/snd-hda-codec-cs8409> (adapted/integrated here).
-  _If you’d like explicit attribution for a specific change, open an issue/PR with the source URL and preferred credit line._
+- Community driver work by **egorenar** and contributors: <https://github.com/egorenar/snd-hda-codec-cs8409> (adapted/integrated here).  
+  _If you authored a specific change we integrated and want a **named credit**, open an issue/PR with the source URL and your preferred credit line — we’ll add it under **Sources integrated / Credits**._
 
 ---
 
