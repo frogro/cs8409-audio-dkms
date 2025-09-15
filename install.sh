@@ -2,7 +2,8 @@
 # CS8409 DKMS one-click installer (Debian 12/13)
 # - Builds for running kernel by default; supports --kver / --all-installed
 # - Mirrors sources (this dir) to /usr/src/snd-hda-codec-cs8409-1.0+dkms/
-# - Registers with DKMS, builds, installs, and (optionally) reloads
+# - Registers with DKMS, builds, installs, and reloads if possible
+# - Also applies suspend patch (s2idle + xHCI hook) by default
 # - Requires: build-essential, dkms, kmod, rsync, linux-headers-<kver>
 # - AUTOINSTALL="yes" in dkms.conf ensures automatic rebuilds on kernel updates
 
@@ -27,6 +28,7 @@ DKMS_VER="1.0+dkms"      # must match dkms.conf PACKAGE_VERSION
 SRC_DST="/usr/src/${DKMS_NAME}-${DKMS_VER}"
 TARGETS=()
 DO_RELOAD=1
+DO_SUSPEND_PATCH=1
 
 # ---------- args ----------
 while [[ $# -gt 0 ]]; do
@@ -34,10 +36,11 @@ while [[ $# -gt 0 ]]; do
     --kver) [[ $# -lt 2 ]] && die "--kver requires a value"; TARGETS+=("$2"); shift 2 ;;
     --all-installed) mapfile -t TARGETS < <(basename -a /lib/modules/* 2>/dev/null || true); shift ;;
     --no-reload) DO_RELOAD=0; shift ;;
+    --no-suspend-patch) DO_SUSPEND_PATCH=0; shift ;;
     -h|--help)
       cat <<'USAGE'
-Usage: sudo ./install.sh [--kver <ver>]... [--all-installed] [--no-reload]
-Default: build for the running kernel
+Usage: sudo ./install.sh [--kver <ver>]... [--all-installed] [--no-reload] [--no-suspend-patch]
+Default: build for the running kernel and apply suspend patch
 USAGE
       exit 0 ;;
     *) die "Unknown arg: $1" ;;
@@ -63,7 +66,7 @@ for kv in "${TARGETS[@]}"; do
   fi
 done
 
-# ---------- ensure DKMS tree exists & is writable (NEW) ----------
+# ---------- ensure DKMS tree exists & writable ----------
 if [[ ! -d /var/lib/dkms ]]; then
   info "Creating /var/lib/dkms …"
   install -d -m 0755 -o root -g root /var/lib/dkms
@@ -71,9 +74,8 @@ fi
 if ! touch /var/lib/dkms/.writetest 2>/dev/null; then
   warn "/var/lib/dkms not writable; attempting dkms reinstall …"
   apt-get --reinstall install -y dkms
-  # retry
   if ! touch /var/lib/dkms/.writetest 2>/dev/null; then
-    die "/var/lib/dkms is still not writable after dkms reinstall. Check filesystem permissions/mount."
+    die "/var/lib/dkms is still not writable after dkms reinstall. Check filesystem."
   fi
 fi
 rm -f /var/lib/dkms/.writetest
@@ -132,23 +134,23 @@ info "Recent dmesg (HDA/CS8409):"
 dmesg | egrep -i 'cs8409|cirrus|hda' | tail -n 80 || true
 
 # --- Suspend-Patch (s2idle + xHCI-Hook) ------------------------------------
-# apply-suspend-patch.sh liegt im Repo-Stammverzeichnis
-ROOTDIR="$(cd "$(dirname "$0")"/.. && pwd)"
-if [ -x "$ROOTDIR/apply-suspend-patch.sh" ]; then
-  echo
-  bold "Applying suspend patch (s2idle + xHCI hook)…"
-  if ! "$ROOTDIR/apply-suspend-patch.sh"; then
-    warn "suspend patch finished with non-zero status"
-  fi
+if [[ $DO_SUSPEND_PATCH -eq 1 ]]; then
+  bold "Applying suspend patch…"
+  REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  bash "${REPO_DIR}/apply-suspend-patch.sh"
+  ok "Suspend patch done"
 else
-  warn "$ROOTDIR/apply-suspend-patch.sh not found or not executable; skipping suspend patch."
+  warn "--no-suspend-patch specified: skipping s2idle/xHCI hook and GRUB flags"
 fi
 
 # --- Reboot-Dialog ganz zum Schluss ----------------------------------------
 bold "Installation finished."
-echo
-read -r -p "Reboot now to activate audio driver & suspend fix? [y/N] " yn || true
-case "${yn:-N}" in
-  y|Y) info "Rebooting…"; sleep 1; reboot ;;
-  *)   ok "Reboot skipped. Please reboot later so GRUB & the sleep hook become active." ;;
-esac
+if printf '%s\n' "${TARGETS[@]}" | grep -qx "${running_kv}"; then
+  read -r -p $'\nDo you want to reboot now to activate the audio driver and suspend patch? [y/N] ' yn || true
+  case "${yn:-N}" in
+    y|Y) info "Rebooting…"; sleep 1; reboot ;;
+    *)   ok "Reboot skipped. Please reboot later to apply all changes." ;;
+  esac
+else
+  printf "\nIf your *running* kernel (%s) is not among the built targets, please reboot into one of: %s.\n" "$running_kv" "${TARGETS[*]}"
+fi
