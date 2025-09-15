@@ -1,110 +1,90 @@
 #!/usr/bin/env bash
-# apply-suspend-patch.sh
-# Richtet s2idle-Workaround + GRUB-Args ein:
-#  - erkennt Nicht-PCH-xHCI (alles außer 0000:00:14.0)
-#  - schreibt /etc/default/xhci-s2idle (TARGETS)
-#  - installiert minimalen Hook /etc/systemd/system-sleep/98-xhci-s2idle-unbind.sh
-#  - ergänzt GRUB um: snd_hda_intel.dmic_detect=0 mem_sleep_default=s2idle
-
 set -euo pipefail
 
-[ "$(id -u)" -eq 0 ] || { echo "Bitte als root ausführen (sudo)"; exit 1; }
-
-CFG=/etc/default/xhci-s2idle
-HOOK=/etc/systemd/system-sleep/98-xhci-s2idle-unbind.sh
-
-detect_targets() {
-  # Liste aktuell an xhci_hcd gebundener Geräte, excl. PCH (00:14.0)
-  local devs t
-  [ -d /sys/bus/pci/drivers/xhci_hcd ] || return 0
-  devs=$(ls -1 /sys/bus/pci/drivers/xhci_hcd 2>/dev/null | grep -E '^0000:' || true)
-  for t in $devs; do
-    [ "$t" = "0000:00:14.0" ] && continue
-    echo "$t"
-  done
+need_root() {
+  if [ "${EUID:-$(id -u)}" -ne 0 ]; then
+    echo "Re-running with sudo..." >&2
+    exec sudo --preserve-env=PATH "$0" "$@"
+  fi
 }
+need_root "$@"
 
-ensure_grub_arg() {
-  local key="$1" val="$2" file="/etc/default/grub"
-  grep -qE '^\s*GRUB_CMDLINE_LINUX_DEFAULT=' "$file" || \
-    echo 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"' >> "$file"
-  grep -qE "(^|\s)${key}(=|$)" "$file" || \
-    sed -i "s/^\s*GRUB_CMDLINE_LINUX_DEFAULT=\"/&${key}=${val} /" "$file"
-}
+echo "[apply-suspend-patch] Start"
 
-write_cfg() {
-  local targets="$1"
-  install -Dm644 /dev/stdin "$CFG" <<EOF
-# xHCI-Controller, die bei s2idle vor dem Suspend unbound und danach wieder bound werden.
-# Automatisch erkannt (Nicht-PCH). Manuell anpassbar.
-TARGETS="${targets}"
+# 2.1 GRUB-Erweiterung (idempotent) via /etc/default/grub.d Drop-in
+GRUB_D_DIR=/etc/default/grub.d
+GRUB_SNIPPET=$GRUB_D_DIR/99-cs8409-audio.conf
+mkdir -p "$GRUB_D_DIR"
+
+if [ ! -s "$GRUB_SNIPPET" ]; then
+  cat >"$GRUB_SNIPPET" <<'EOF'
+# Added by cs8409 installer: force s2idle & disable DMIC probe on HDA-Intel
+GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT snd_hda_intel.dmic_detect=0 mem_sleep_default=s2idle"
 EOF
-  echo "[OK] Config: $CFG (TARGETS=${targets})"
-}
+  echo "[apply-suspend-patch] wrote $GRUB_SNIPPET"
+else
+  echo "[apply-suspend-patch] $GRUB_SNIPPET exists (ok)"
+fi
 
-install_hook() {
-  install -Dm755 /dev/stdin "$HOOK" <<'EOF'
+# 2.2 Minimalen xHCI-Hook installieren
+HOOK=/usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh
+install -D -m 0755 -T "$(dirname "$0")/system-sleep-98-xhci-s2idle-unbind.sh" "$HOOK" 2>/dev/null || {
+  # Fallback: aus eingebettetem Here-Doc (falls Script lokal aufgerufen)
+  cat >"$HOOK" <<'EOF'
 #!/bin/sh
-# 98-xhci-s2idle-unbind.sh — minimaler Unbind/Bind nur bei s2idle
 CFG=/etc/default/xhci-s2idle
 LIST=/run/xhci-s2idle.bound
-is_s2idle() { grep -q '\[s2idle\]' /sys/power/mem_sleep 2>/dev/null; }
-
-TARGETS=""
+is_s2idle(){ grep -q '\[s2idle\]' /sys/power/mem_sleep 2>/dev/null; }
+TARGETS="0000:08:00.0"
 [ -r "$CFG" ] && . "$CFG"
-
 case "$1/$2" in
-  pre/*)
-    is_s2idle || exit 0
-    : > "$LIST"
-    for dev in $TARGETS; do
-      [ -e "/sys/bus/pci/devices/$dev/driver" ] || continue
-      echo "xhci-unbind $dev" | logger -t xhci-s2idle
-      echo "$dev" >> "$LIST"
-      echo "$dev" > /sys/bus/pci/drivers/xhci_hcd/unbind
-    done
-    ;;
-  post/*)
-    is_s2idle || exit 0
-    [ -r "$LIST" ] || exit 0
-    while read -r dev; do
-      [ -e "/sys/bus/pci/devices/$dev" ] || continue
-      echo "xhci-bind $dev" | logger -t xhci-s2idle
-      echo "$dev" > /sys/bus/pci/drivers/xhci_hcd/bind
-    done < "$LIST"
-    rm -f "$LIST"
-    ;;
+  pre/*) is_s2idle || exit 0; : > "$LIST"; for dev in $TARGETS; do
+           [ -e "/sys/bus/pci/devices/$dev/driver" ] || continue
+           echo "$dev" >> "$LIST"
+           echo "$dev" > /sys/bus/pci/drivers/xhci_hcd/unbind
+         done ;;
+  post/*) is_s2idle || exit 0; [ -r "$LIST" ] || exit 0
+          while read -r dev; do
+            [ -e "/sys/bus/pci/devices/$dev" ] || continue
+            echo "$dev" > /sys/bus/pci/drivers/xhci_hcd/bind
+          done < "$LIST"
+          rm -f "$LIST" ;;
 esac
 EOF
-  echo "[OK] Hook: $HOOK"
+  chmod +x "$HOOK"
 }
+echo "[apply-suspend-patch] hook at $HOOK"
 
-# 1) xHCI-Ziele erkennen
-targets="$(detect_targets || true)"
-if [ -z "$targets" ]; then
-  echo "[HINW] Kein Nicht-PCH-xHCI erkannt. Hook bleibt aktiv, TARGETS leer → no-op."
+# 2.3 /etc/default/xhci-s2idle automatisch befüllen (Nicht-PCH-xHCI)
+CFG=/etc/default/xhci-s2idle
+PCH="0000:00:14.0"
+found=""
+if [ -d /sys/bus/pci/drivers/xhci_hcd ]; then
+  while IFS= read -r -d '' link; do
+    slot=$(basename "$link")
+    [ "$slot" = "$PCH" ] && continue
+    found+=" $slot"
+  done < <(find /sys/bus/pci/drivers/xhci_hcd -maxdepth 1 -type l -print0 | sort -z)
 fi
 
-# 2) Config + Hook schreiben
-write_cfg "$targets"
-install_hook
-
-# 3) GRUB-Args ergänzen
-ensure_grub_arg "snd_hda_intel.dmic_detect" "0"
-ensure_grub_arg "mem_sleep_default" "s2idle"
-if command -v update-grub >/dev/null 2>&1; then
-  update-grub >/dev/null || true
+mkdir -p "$(dirname "$CFG")"
+if [ -n "$found" ]; then
+  echo "TARGETS=\"${found# }\"" > "$CFG"
+  echo "[apply-suspend-patch] config $CFG -> TARGETS=${found# }"
 else
-  grub-mkconfig -o /boot/grub/grub.cfg >/dev/null || true
+  # Kein Zusatz-xHCI gefunden – Standard 08:00.0 als Kommentar + Hinweis
+  cat >"$CFG" <<'EOF'
+# No non-PCH xHCI auto-detected. If your suspend/resume fails on s2idle,
+# set your controller(s) here, e.g.:
+# TARGETS="0000:08:00.0"
+EOF
+  echo "[apply-suspend-patch] no extra xHCI found; wrote commented template to $CFG"
 fi
-echo "[OK] GRUB-Parameter gesetzt (dmic_detect=0, mem_sleep_default=s2idle)"
 
-cat <<MSG
-
-Fertig:
-- Hook aktiv (nur bei s2idle): $HOOK
-- Konfig anpassbar:            $CFG
-- GRUB ergänzt:                snd_hda_intel.dmic_detect=0 mem_sleep_default=s2idle
-
-Bitte neu starten und s2idle zweimal testen.
-MSG
+# 2.4 GRUB neu schreiben
+if command -v update-grub >/dev/null 2>&1; then
+  update-grub
+else
+  grub-mkconfig -o /boot/grub/grub.cfg
+fi
+echo "[apply-suspend-patch] done"
