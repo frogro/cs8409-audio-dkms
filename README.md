@@ -50,7 +50,7 @@ Intel Macs with **CS8409 + CS42L42** audio path, typically:
    - Reloads the HDA stack and prints a short report (`aplay -l`, relevant `dmesg`).
 
 4. **Uninstall helpers**
-   - Provides steps to **unregister** the DKMS package and **revert optional settings** (sleep hook + config).
+   - Provides steps to **unregister** the DKMS package and **revert additional settings** (sleep hook + config).
 
 ---
 
@@ -65,7 +65,7 @@ Intel Macs with **CS8409 + CS42L42** audio path, typically:
 Install helpers (Debian/Ubuntu):
 ```bash
 sudo apt update
-sudo apt install -y git build-essential dkms kmod rsync patch pciutils alsa-utils                     pavucontrol pulseaudio-utils                     linux-headers-$(uname -r)
+sudo apt install -y git build-essential dkms kmod rsync patch pciutils alsa-utils pavucontrol pulseaudio-utils linux-headers-$(uname -r)
 ```
 
 > **Secure Boot (Debian/Ubuntu)**: If Secure Boot is **enabled**, unsigned DKMS modules **won’t load**. Either **disable Secure Boot** in firmware, **or** enroll a **Machine Owner Key (MOK)** and sign the DKMS module (Ubuntu typically prompts for MOK enrollment during dkms builds).
