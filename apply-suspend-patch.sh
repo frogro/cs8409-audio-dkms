@@ -23,7 +23,7 @@ ensure_grub_flags(){
   [[ -r "$grub" ]] || { warn "$grub not found, skipping GRUB changes"; return 0; }
   cp -a "$grub" "${grub}.bak.$(date +%Y%m%d-%H%M%S)"
 
-  local need1="snd_hda_intel.dmic_detect=1"
+  local need1="snd-intel-dspcfg.dsp_driver=1"
   local need2="mem_sleep_default=s2idle"
 
   local line
