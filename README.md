@@ -1,16 +1,16 @@
 # CS8409 Audio DKMS (Debian/Ubuntu on Intel Macs)
 
 This repository provides a **DKMS-based audio enablement** for Intel Macs (iMac, MacBook, Mac mini, iMac Pro, Mac Pro) that use **Cirrus Logic CS8409** HDA audio with a **CS42L42** companion codec — the common setup on many **T2‑era Macs (2018–2020)** running **Linux (Debian/Ubuntu)**.  
-On these machines, users frequently hit **“no sound”** because the Linux kernel may lack **model‑specific initialization** and **resume quirks** out of the box. This project bundles **kernel‑compatible driver sources/patches** and installs them via **DKMS**, plus optional **resume workarounds**, to make audio **work reliably** across kernel updates and sleep/wake cycles.
+On these machines, users frequently hit **“no sound”** because the Linux kernel may lack **model‑specific initialization** and **resume quirks** out of the box. This project bundles **kernel‑compatible driver sources/patches** and installs them via **DKMS**, plus an optional **resume workaround**, to make audio **work reliably** across kernel updates and sleep/wake cycles.
 
-- **Why this repo?** It is a **consolidation and forward‑evolution** of community efforts around CS8409/CS42L42 on T2 Macs. It **integrates and adapts** community driver code and small fixes, wrapped as a **DKMS module** so that audio **keeps working after kernel updates**, and adds a **suspend/resume fix** for the notorious “no audio after suspend” issue.
+- **Why this repo?** It is a **consolidation and forward‑evolution** of existing **community solutions** for CS8409/CS42L42 on T2 Macs. It **integrates** community driver work and adds small glue fixes, wrapped as a **DKMS module** so that audio **keeps working after kernel updates** — and includes a **suspend/resume fix** for the notorious “no audio after suspend” issue.
 - **What you get**
   - **Sound out of the box** on supported Macs (speakers/headphones, HDA controls).
   - **DKMS auto‑rebuild** across kernel upgrades (solves “no sound after kernel update”).
-  - Optional **resume fix** (“no sound after suspend”), using a minimal **systemd sleep hook** and recommended kernel parameters for s2idle on T2 hardware.
+  - Optional **resume fix** (“no sound after suspend”) via a minimal **systemd sleep hook** and recommended kernel parameters for T2 hardware.
   - A clean uninstall path.
 
-> This repository ships **no proprietary firmware**. It provides **source code and patches** for the HDA codec driver path and integrates them via **DKMS**. It also installs optional configuration to improve **suspend/resume** behavior on T2‑era Macs.
+> This repository ships **no proprietary firmware**. It provides **open driver sources/patches** for the HDA codec path and integrates them via **DKMS**. It also applies optional configuration to improve **suspend/resume** on T2‑era Macs.
 
 ---
 
@@ -22,53 +22,54 @@ Intel Macs with **CS8409 + CS42L42** audio path, typically:
 - **Mac mini 2018** (`Macmini8,1`)
 - **iMac Pro** (`iMacPro1,1`)
 
-> The installer auto‑detects supported hardware. You can still proceed on similar machines; unsupported models will refuse to load or have missing nodes, in which case please open an issue with `dmesg` and `alsactl info` output.
+> The installer auto‑detects supported hardware. If a similar model isn’t recognized, the module may refuse to load or create incomplete nodes — please open an issue with `dmesg` and `alsactl info` output.
 
 ---
 
 ## What the installer actually does
 
 1. **Sanity checks & prerequisites**
-   - Verifies **root** and that required tools and **kernel headers** are installed.
-   - Detects a compatible Mac model and kernel version.
+   - Ensures **root**, verifies required tools and **kernel headers** are present.
+   - Detects a compatible Mac model and running kernel.
 
 2. **Build & install via DKMS**
    - Registers the module (e.g. `snd-hda-codec-cs8409`) with **DKMS**.
-   - Builds against your current kernel headers and **installs** it for **all installed kernels**.
+   - Builds against your current headers and **installs** it for **all installed kernels**.
    - Ensures automatic **rebuild on future kernel updates**.
 
-3. **Enable runtime configuration**
-   - Applies recommended **kernel parameters** for T2 audio stability (see below).
-   - Optionally installs a **minimal systemd sleep hook** to avoid xHCI issues in `s2idle` and ensure audio comes back after suspend.
+3. **Apply recommended runtime settings (T2 stability)**
+   - Writes **recommended kernel parameters** (T2 audio):  
+     `snd_hda_intel.dmic_detect=0 mem_sleep_default=s2idle`  
+     (can be **skipped** via a flag; see below).
+   - Optionally installs a **minimal systemd sleep hook** (xHCI/s2idle workaround) to avoid **“no sound after suspend”** on some models — you will be **prompted** before enabling it.
+   - Reloads the HDA stack and prints a short report (`aplay -l`, relevant `dmesg`).
 
-4. **Driver (re)load and verification**
-   - Reloads HDA modules (`snd_hda_intel`, `snd_hda_codec_cs8409`, etc.).
-   - Prints a short report (`aplay -l`, `dmesg | egrep -i 'cs8409|cs42l42|hda'`).
+4. **Uninstall helpers**
+   - Provides a script path to remove the DKMS package and revert optional settings.
 
 ---
 
 ## Highlights (what makes this repo special)
 
-- **No sound after kernel update?** Solved by **DKMS**: module auto‑rebuilds with every kernel install.
-- **No sound after suspend/resume?** Mitigated by **s2idle + xHCI unbind/rebind hook** (optional) and recommended kernel parameters.
-- **Better than piecing patches together**: this is a **curated, forward‑compatible** packaging of community improvements, with small integration fixes to keep it working on current kernels.
+- **No sound after kernel update?** Solved by **DKMS**: the module auto‑rebuilds whenever the kernel is updated.
+- **No sound after suspend/resume?** Mitigated by a **tested s2idle + xHCI sleep hook** (optional) and kernel parameters tailored for T2 Macs.
+- **Community integration**: a **curated, forward‑compatible** packaging of community driver improvements with maintenance glue for current kernels.
 
 ---
 
 ## Requirements
 
 - **Debian 12/13** or **Ubuntu 22.04/24.04** (or newer)
-- **Kernel headers** installed for your running kernel (e.g. `linux-headers-$(uname -r)`)
-- Tools: `git`, `build-essential` (or `base-devel` equivalent), `dkms`, `kmod`, `rsync`, `patch`, `pciutils`, `alsa-utils`
+- **Kernel headers** for your running kernel (e.g. `linux-headers-$(uname -r)`)
+- Tools: `git`, `build-essential` (or `base-devel` equivalent), `dkms`, `kmod`, `rsync`, `patch`, `pciutils`, `alsa-utils`, `pavucontrol`, `pulseaudio-utils`
 
 Install helpers (Debian/Ubuntu):
 ```bash
 sudo apt update
-sudo apt install -y git build-essential dkms kmod rsync patch pciutils alsa-utils \
-                    linux-headers-$(uname -r)
+sudo apt install -y git build-essential dkms kmod rsync patch pciutils alsa-utils                     pavucontrol pulseaudio-utils                     linux-headers-$(uname -r)
 ```
 
-> **Secure Boot (Ubuntu/Debian)**: If Secure Boot is **enabled**, unsigned DKMS modules **won’t load**. Either **disable Secure Boot** in firmware, **or** enroll a **Machine Owner Key (MOK)** and sign the DKMS module. Ubuntu will typically prompt you to set a MOK password during dkms installation when Secure Boot is on.
+> **Secure Boot (Debian/Ubuntu)**: If Secure Boot is **enabled**, unsigned DKMS modules **won’t load**. Either **disable Secure Boot** in firmware, **or** enroll a **Machine Owner Key (MOK)** and sign the DKMS module (Ubuntu typically prompts for MOK enrollment during dkms builds).
 
 ---
 
@@ -81,76 +82,47 @@ chmod +x install.sh
 sudo ./install.sh
 ```
 
-After installation, you should see devices under `aplay -l`. If audio is still muted, open **alsamixer** and check the output path.
+After installation, you should see devices under `aplay -l`. If audio is muted, open **alsamixer** or **pavucontrol** and check the output path.
 
 ---
 
-## Recommended kernel parameters (T2 Macs)
+## Command‑line options
 
-Add these to your GRUB default (Debian/Ubuntu alike) to improve stability on T2 hardware:
 ```
-snd_hda_intel.dmic_detect=0 mem_sleep_default=s2idle
-```
-Steps:
-```bash
-sudo sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="quiet splash snd_hda_intel.dmic_detect=0 mem_sleep_default=s2idle"/' /etc/default/grub
-sudo update-grub
+sudo ./install.sh [--yes] [--dkms-only] [--no-grub] [--install-sleep-hook|--no-sleep-hook]
+                  [--dry-run] [--uninstall] [--verbose]
 ```
 
-> `dmic_detect=0` avoids conflicts with the T2 digital mic path, and `s2idle` improves suspend/resume behavior on these Macs.
+- `--yes`, `-y` — assume “yes” to prompts (non‑interactive).
+- `--dkms-only` — build/install the DKMS module **without** touching GRUB or sleep hooks.
+- `--no-grub` — skip writing the recommended kernel parameters.
+- `--install-sleep-hook` / `--no-sleep-hook` — force enable/disable the **xHCI s2idle** hook (otherwise you’ll be prompted).
+- `--dry-run` — simulate actions without changing the system.
+- `--uninstall` — remove the DKMS module and revert optional settings.
+- `--verbose` — show more build/log output.
 
----
-
-## Suspend/resume fix (optional)
-
-The installer can place a minimal **systemd sleep hook** (e.g. `/usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh`) that works around xHCI interaction with `s2idle`. This avoids **“no sound after second suspend”** patterns on some models.
-
-To enable/disable the hook manually:
-```bash
-# enable (install or symlink the helper into system-sleep)
-sudo cp extras/98-xhci-s2idle-unbind.sh /usr/lib/systemd/system-sleep/
-sudo chmod +x /usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh
-
-# disable
-sudo rm -f /usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh
-```
-
-> If your distro uses a different sleep directory (rare), adjust accordingly (e.g. `/lib/systemd/system-sleep`).
-
----
-
-## Ubuntu specifics
-
-- **22.04 LTS (HWE)**: if you need a newer kernel, install **HWE**:
-  ```bash
-  sudo apt update
-  sudo apt install -y linux-generic-hwe-22.04
-  ```
-- **Secure Boot**: if enabled, sign the DKMS module via MOK (Ubuntu’s dkms tooling will assist) or disable Secure Boot.
-- **GRUB params & hook**: identical to Debian. Run the GRUB commands above; the sleep hook path is the same on Ubuntu.
+> If your local script uses different flag names, adjust this section accordingly.
 
 ---
 
 ## Uninstall / Revert
 
 ```bash
-# Figure out the module name and version used by DKMS
+# Discover the module as registered by DKMS
 dkms status | grep -i cs8409 || true
 
-# Example (adjust -m/-v to your output):
+# Example (adjust -m/-v to match your system):
 sudo dkms remove -m snd-hda-codec-cs8409 -v 1.0 --all
 
-# Unload and reload HDA stack (or reboot):
+# Unload/reload HDA stack (or just reboot)
 sudo modprobe -r snd_hda_codec_cs8409 snd_hda_codec snd_hda_intel || true
 sudo modprobe snd_hda_intel && sudo modprobe snd_hda_codec && sudo modprobe snd_hda_codec_cs8409
 ```
 
-Also revert optional configuration:
+Also revert optional configuration if you enabled it:
 ```bash
 # Remove sleep hook if present
 sudo rm -f /usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh
-
-# (Optional) Revert GRUB params and run update-grub again
 ```
 
 ---
@@ -158,56 +130,53 @@ sudo rm -f /usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh
 ## Troubleshooting
 
 - **No devices in `aplay -l`**
-  - Ensure headers match your running kernel: `dpkg -l | grep linux-headers` and `uname -r`.
-  - Check module is loaded: `lsmod | egrep 'cs8409|snd_hda_intel'`.
-  - Look for errors: `dmesg | egrep -i 'cs8409|cs42l42|hda|firmware' | tail -n 80`.
+  - Make sure headers match your kernel: `dpkg -l | grep linux-headers` vs `uname -r`.
+  - Check module: `lsmod | egrep 'cs8409|snd_hda_intel'`.
+  - Look for errors: `dmesg | egrep -i 'cs8409|cs42l42|hda|firmware' | tail -n 120`.
 
 - **No sound after suspend**
-  - Ensure GRUB params include `mem_sleep_default=s2idle`.
-  - Enable the **xHCI s2idle hook** (see above) and reboot once.
+  - Ensure the **xHCI s2idle** hook is enabled and the system uses `s2idle` (the installer can set this up).
+  - Reboot after enabling.
 
-- **Module builds but does not load (Ubuntu)**
-  - Likely **Secure Boot**: sign the module via **MOK** or disable Secure Boot.
+- **Module builds but does not load (Secure Boot)**
+  - Sign the module via **MOK** or temporarily disable Secure Boot.
 
 - **Regression after kernel upgrade**
-  - Run the installer again (`sudo ./install.sh`) so DKMS re‑syncs, or check `dkms status` for errors.
+  - Verify DKMS rebuilt: `dkms status`. Re‑run `sudo ./install.sh` if needed.
 
 When reporting issues, include:
 ```
 uname -r
 lsmod | egrep 'cs8409|snd_hda_intel'
-dmesg | egrep -i 'cs8409|cs42l42|hda|xHCI|suspend' | tail -n 120
+dmesg | egrep -i 'cs8409|cs42l42|hda|xHCI|suspend' | tail -n 200
 aplay -l
 sudo alsactl info
-cat /etc/default/grub | grep GRUB_CMDLINE_LINUX_DEFAULT
 ```
 
 ---
 
 ## Sources integrated / Credits
 
-This project builds upon and integrates work from:
-- The **Linux kernel ALSA HDA** subsystem, including **`snd-hda-codec-cs8409`** and related Cirrus codec support.
-- Multiple **community patches** and snippets improving initialization and suspend/resume on T2 Macs (CS8409 + CS42L42 path).
-- Packaging and scripts authored here to make the above easy to install and maintain via **DKMS**.
-
-> If you recognize specific patches you authored and would like explicit attribution, please open an issue/PR with the preferred credit line and source URL. We’re happy to add it.
+This project **builds on and integrates** work from:
+- The **Linux kernel ALSA HDA** subsystem (including `snd-hda-codec-cs8409` and related Cirrus codec pieces).
+- Multiple **community patches and repos** that improve init and resume on T2 Macs (CS8409 + CS42L42 path).  
+  _If you’d like explicit attribution for a specific change, open an issue/PR with the source URL and preferred credit line._
 
 ---
 
 ## Security and integrity
 
-This repo provides **open source code and patches** only. It does **not** include proprietary firmware. Source is compiled locally against your headers via **DKMS**.
+This repo provides **open source code and patches** only. It does **not** include proprietary firmware. Sources are compiled locally against your headers via **DKMS**.
 
 ---
 
 ## License
 
 This repository contains components under **two licenses**:
-- **Kernel‑adjacent code** (driver code, patches, anything under `src/` and `patches/`): **GPL‑2.0‑only** (to remain compatible with the Linux kernel and GPL‑only symbol usage).
-- **Build/packaging scripts and docs** (e.g. `install.sh`, helper scripts in `extras/`, and this README): **MIT License**.
+- **Kernel‑adjacent code** (driver code and any sources that compile into a kernel module, typically under `src/`): **GPL‑2.0‑only** (Linux kernel compatibility and GPL‑only symbols).
+- **Build/packaging scripts and docs** (e.g. `install.sh`, files in `extras/`, and this README): **MIT License**.
 
-See the combined [`LICENSE`](./LICENSE) file for full texts and which paths each license applies to.
+See the combined [`LICENSE`](./LICENSE) for full texts and which paths each license applies to.
 
 ---
 
