@@ -1,0 +1,6 @@
+# xHCI s2idle unbind hook configuration
+# Set ENABLE=1 to enable the hook (default). Set to 0 to disable.
+ENABLE=1
+# Optional: fixed TARGETS (space-separated BDFs). If empty, hook auto-detects non-PCH xHCI.
+# Example:
+# TARGETS="0000:08:00.0"
