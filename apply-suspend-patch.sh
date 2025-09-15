@@ -17,105 +17,128 @@ die(){ printf '[ERR] %s\n' "$*" >&2; exit 1; }
 need_root(){ if [[ ${EUID:-$(id -u)} -ne 0 ]]; then exec sudo -E bash "$0" "$@"; fi; }
 need_root "$@"
 
-GRUB_DEF="/etc/default/grub"
-GRUB_FLAGS=("snd-intel-dspcfg.dsp_driver=1" "mem_sleep_default=s2idle")
-
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+CFG_DIR="/etc/default"
+CFG_FILE="${CFG_DIR}/xhci-s2idle"
 HOOK_DST="/usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh"
-HOOK_SRC_REL="hooks/98-xhci-s2idle-unbind.sh"
-CONF_PATH="/etc/default/xhci-s2idle"
-
-install -d -m 0755 -o root -g root "$(dirname "$HOOK_DST")" /etc/default
+HOOK_SRC="${SCRIPT_DIR}/hooks/98-xhci-s2idle-unbind.sh"
+FALLBACK_SRC="${SCRIPT_DIR}/tools/98-xhci-s2idle-unbind.fallback.sh"
 
 ensure_grub_flags() {
-  [[ -f "$GRUB_DEF" ]] || die "$GRUB_DEF not found"
-
-  local cur line new f
-  line="$(grep -E '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_DEF" || true)"
-  if [[ -n "$line" ]]; then
-    cur="${line#GRUB_CMDLINE_LINUX_DEFAULT=\"}"
-    cur="${cur%\"}"
-  else
-    cur=""
-    echo 'GRUB_CMDLINE_LINUX_DEFAULT=""' >> "$GRUB_DEF"
-  fi
-
-  new="$cur"
-  for f in "${GRUB_FLAGS[@]}"; do
-    if ! grep -Eq "(^|[[:space:]])${f//\//\\/}([[:space:]]|\$)" <<<"$new"; then
-      new="$new $f"
+  local f="/etc/default/grub"
+  [[ -r "$f" ]] || die "$f not readable"
+  # read current line (inside quotes)
+  local cur; cur="$(sed -nE 's/^GRUB_CMDLINE_LINUX_DEFAULT="(.*)".*/\1/p' "$f")"
+  # flags we need (dmic_detect ist veraltet → dsp_driver=1)
+  local need=("snd-intel-dspcfg.dsp_driver=1" "mem_sleep_default=s2idle")
+  local new="$cur"
+  for fl in "${need[@]}"; do
+    if [[ "$new" != *"$fl"* ]]; then
+      new="$new $fl"
     fi
   done
-  new="${new#" "}"
-
+  # trim
+  new="$(echo "$new" | xargs)"
   if [[ "$new" != "$cur" ]]; then
-    sed -i -E "s|^GRUB_CMDLINE_LINUX_DEFAULT=\".*\"|GRUB_CMDLINE_LINUX_DEFAULT=\"${new}\"|" "$GRUB_DEF"
-    ok "GRUB flags ensured: ${GRUB_FLAGS[*]}"
-    info "Updating GRUB…"
+    info "GRUB flags ensuring…"
+    sed -i -E 's|^GRUB_CMDLINE_LINUX_DEFAULT=".*"|GRUB_CMDLINE_LINUX_DEFAULT="'"$new"'"|' "$f"
+    ok "GRUB flags set: $new"
     if command -v update-grub >/dev/null 2>&1; then
-      update-grub >/dev/null
+      update-grub
     else
-      grub-mkconfig -o /boot/grub/grub.cfg >/dev/null
+      grub-mkconfig -o /boot/grub/grub.cfg
     fi
   else
-    ok "GRUB already contains required flags"
+    ok "GRUB flags already present: $cur"
   fi
 }
 
-hook_fallback_body() {
-cat <<'HOOK'
+list_xhci() {
+  # Listet alle xHCI-Geräte (Klasse 0x0c0330) als PCI-BDF
+  local d c
+  for d in /sys/bus/pci/devices/*; do
+    [[ -r "$d/class" ]] || continue
+    c="$(cat "$d/class")"
+    [[ "$c" == "0x0c0330" ]] || continue
+    basename "$d"
+  done
+}
+
+detect_targets() {
+  # bevorzugt non-PCH (≠ 0000:00:14.0); sonst PCH, sonst leer
+  local all nonpch pch="0000:00:14.0" out=""
+  mapfile -t all < <(list_xhci || true)
+  if [[ ${#all[@]} -eq 0 ]]; then
+    echo ""
+    return 0
+  fi
+  mapfile -t nonpch < <(printf '%s\n' "${all[@]}" | grep -v -E '^0000:00:14\.0$' || true)
+  if [[ ${#nonpch[@]} -gt 0 ]]; then
+    out="$(printf '%s ' "${nonpch[@]}" | xargs)"
+  elif [[ -e "/sys/bus/pci/devices/$pch" ]]; then
+    out="$pch"
+  fi
+  echo "$out"
+}
+
+install_hook() {
+  install -d -m 0755 -o root -g root "$(dirname "$HOOK_DST")"
+  if [[ -r "$HOOK_SRC" ]]; then
+    info "Installing hook from repo: $HOOK_SRC"
+    install -m 0755 -o root -g root "$HOOK_SRC" "$HOOK_DST"
+  else
+    warn "Repo hook not found, using embedded fallback"
+    # Schreibe eine geprüfte Fallback-Version (identisch zur Repo-Version)
+    cat > "$HOOK_DST" <<'SH'
 #!/bin/sh
 # Minimal xHCI unbind hook for s2idle suspend
-# - Only runs for s2idle (not for deep)
-# - Targets come from /etc/default/xhci-s2idle (if present)
-# - Fallback: autodetect non-PCH xHCI (exclude 0000:00:14.0)
-# - Safe: If nothing is detected or ENABLE=0 -> no-op.
-
+# - Runs only for s2idle
+# - Reads /etc/default/xhci-s2idle (ENABLE, TARGETS)
+# - Fallback autodetect if config missing/empty
 CFG=/etc/default/xhci-s2idle
 LIST=/run/xhci-s2idle.bound
 
-is_s2idle() {
-  grep -q '\[s2idle\]' /sys/power/mem_sleep 2>/dev/null
+is_s2idle() { grep -q '\[s2idle\]' /sys/power/mem_sleep 2>/dev/null; }
+
+list_xhci() {
+  # Print PCI BDFs of xHCI (class 0x0c0330)
+  for d in /sys/bus/pci/devices/*; do
+    [ -r "$d/class" ] || continue
+    c=$(cat "$d/class")
+    [ "$c" = "0x0c0330" ] || continue
+    b=$(basename "$d")
+    echo "$b"
+  done
 }
 
-autodetect_targets() {
-  local d dev found=""
-  for d in /sys/bus/pci/drivers/xhci_hcd/0000:* 2>/dev/null; do
-    [ -e "$d" ] || continue
-    dev=$(basename "$d")
-    [ "$dev" = "0000:00:14.0" ] && continue
-    found="${dev}"
-    break
-  done
-  if [ -n "$found" ]; then
-    printf '%s\n' "$found"
-    return 0
+fallback_targets() {
+  # prefer non-PCH (≠ 0000:00:14.0), else PCH, else empty
+  PCH=0000:00:14.0
+  nonpch="$(list_xhci | grep -v -E '^0000:00:14\.0$' || true)"
+  if [ -n "$nonpch" ]; then
+    echo "$nonpch"
+  elif [ -e "/sys/bus/pci/devices/$PCH" ]; then
+    echo "$PCH"
+  else
+    echo ""
   fi
-  for d in /sys/bus/pci/devices/0000:* 2>/dev/null; do
-    [ -e "$d/class" ] || continue
-    [ "$(cat "$d/class" 2>/dev/null)" = "0x0c0330" ] || continue
-    dev=$(basename "$d")
-    [ "$dev" = "0000:00:14.0" ] && continue
-    printf '%s\n' "$dev"
-    return 0
-  done
-  if [ -e /sys/bus/pci/devices/0000:00:14.0 ]; then
-    printf '%s\n' "0000:00:14.0"
-    return 0
+}
+
+load_cfg() {
+  ENABLE=1
+  TARGETS=""
+  [ -r "$CFG" ] && . "$CFG"
+  # If TARGETS empty or invalid, recompute
+  if [ -z "$TARGETS" ]; then
+    TARGETS="$(fallback_targets)"
   fi
-  return 1
 }
 
 case "$1/$2" in
   pre/*)
     is_s2idle || exit 0
-    ENABLE=1
-    TARGETS=""
-    [ -r "$CFG" ] && . "$CFG"
-    [ "${ENABLE:-1}" = "0" ] && exit 0
-    if [ -z "$TARGETS" ]; then
-      TARGETS="$(autodetect_targets || true)"
-    fi
-    [ -z "$TARGETS" ] && exit 0
+    load_cfg
+    [ "${ENABLE:-1}" = "1" ] || exit 0
     : > "$LIST"
     for dev in $TARGETS; do
       [ -e "/sys/bus/pci/devices/$dev/driver" ] || continue
@@ -133,68 +156,39 @@ case "$1/$2" in
     rm -f "$LIST"
     ;;
 esac
-HOOK
-}
-
-install_hook() {
-  if [[ -f "$HOOK_SRC_REL" ]]; then
-    install -m 0755 -o root -g root "$HOOK_SRC_REL" "$HOOK_DST"
-  else
-    local tmp; tmp="$(mktemp)"
-    hook_fallback_body > "$tmp"
-    install -m 0755 -o root -g root "$tmp" "$HOOK_DST"
-    rm -f "$tmp"
+SH
+    chmod 0755 "$HOOK_DST"
   fi
   ok "Installed hook to $HOOK_DST"
 }
 
-detect_targets_for_conf() {
-  # identisch zur Logik im Hook, aber wir dürfen mehrere Kandidaten evaluieren
-  local d dev
-  # 1) gebundene xhci (non-PCH bevorzugt)
-  for d in /sys/bus/pci/drivers/xhci_hcd/0000:* 2>/dev/null; do
-    [ -e "$d" ] || continue
-    dev=$(basename "$d")
-    [ "$dev" = "0000:00:14.0" ] && continue
-    printf '%s\n' "$dev"
-    return 0
-  done
-  # 2) PCI-Class Fallback (non-PCH bevorzugt)
-  for d in /sys/bus/pci/devices/0000:* 2>/dev/null; do
-    [ -e "$d/class" ] || continue
-    [ "$(cat "$d/class" 2>/dev/null)" = "0x0c0330" ] || continue
-    dev=$(basename "$d")
-    [ "$dev" = "0000:00:14.0" ] && continue
-    printf '%s\n' "$dev"
-    return 0
-  done
-  # 3) PCH als letzter Ausweg
-  if [[ -e /sys/bus/pci/devices/0000:00:14.0 ]]; then
-    printf '%s\n' "0000:00:14.0"
-    return 0
-  fi
-  return 1
-}
-
-write_conf() {
-  local tgt="$1" tmp
-  tmp="$(mktemp)"
-  cat >"$tmp" <<EOF
-# xhci-s2idle config
-# ENABLE=1 -> aktiv; ENABLE=0 -> ausgeschaltet (Hook macht no-op)
-# TARGETS: Space-separated PCI IDs von xHCI-Controllern, die bei s2idle unbind/bind bekommen sollen.
-# Wenn leer, nimmt der Hook seine eigene Fallback-Autodetektion (non-PCH bevorzugt).
+write_cfg() {
+  local targets="$1"
+  install -d -m 0755 -o root -g root "$CFG_DIR"
+  cat > "$CFG_FILE" <<EOF
+# Config for 98-xhci-s2idle-unbind.sh
+# ENABLE: 1=active, 0=disabled
 ENABLE=1
-TARGETS="${tgt}"
+# TARGETS: space-separated PCI BDFs; leave empty to auto-detect
+TARGETS="${targets}"
+# Examples:
+# TARGETS="0000:00:14.0"
+# TARGETS="0000:00:14.0 0000:08:00.0"
 EOF
-  install -m 0644 -o root -g root "$tmp" "$CONF_PATH"
-  rm -f "$tmp"
-  ok "Created ${CONF_PATH} (edit ENABLE/TARGETS if needed)"
+  chmod 0644 "$CFG_FILE"
+  ok "Created ${CFG_FILE} (edit TARGETS if needed)"
 }
 
+### main
 bold "Applying suspend patch (s2idle + xHCI hook)…"
 ensure_grub_flags
 install_hook
-tgt="$(detect_targets_for_conf || true)"
-write_conf "${tgt}"
+
+tgt="$(detect_targets || true)"
+if [[ -z "$tgt" ]]; then
+  warn "Could not detect an xHCI controller automatically; leaving TARGETS empty (hook will fallback at runtime)."
+else
+  info "Auto-detected xHCI TARGETS: $tgt"
+fi
+write_cfg "$tgt"
 ok "Suspend patch applied"
