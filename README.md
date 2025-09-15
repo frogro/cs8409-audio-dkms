@@ -31,7 +31,6 @@ Intel Macs with **CS8409 + CS42L42** audio path, typically:
 1. **Sanity checks & prerequisites**
    - Ensures **root**, verifies required tools and **kernel headers** are present.
    - Detects the **running kernel** (and any installed kernels) to determine **DKMS build targets**.  
-     **Note:** This repo does **not** check or update your kernel (unlike the Wi‑Fi wrapper).
 
 2. **Build & install via DKMS**
    - Registers the module (e.g. `snd-hda-codec-cs8409`) with **DKMS**.
