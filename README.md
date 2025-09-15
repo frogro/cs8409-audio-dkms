@@ -17,7 +17,7 @@ On these machines, users frequently hit **“no sound”** because the Linux ker
 ## Supported hardware (examples)
 
 Intel Macs with **CS8409 + CS42L42** audio path, typically:
-- **iMac 2019/2020** (`iMac19,1`, `iMac20,1`, `iMac20,2`)
+- **iMac 2019/2020** (`iMac19,1`, `iMac19,2`, `iMac20,1`, `iMac20,2`)
 - **MacBook Pro 2018–2020** (`MacBookPro15,x`, `MacBookPro16,x`)
 - **Mac mini 2018** (`Macmini8,1`)
 - **iMac Pro** (`iMacPro1,1`)
