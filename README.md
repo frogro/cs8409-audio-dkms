@@ -1,3 +1,4 @@
+[![ShellCheck](https://github.com/frogro/cs8409-audio-dkms/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/frogro/cs8409-audio-dkms/actions/workflows/shellcheck.yml)
 # CS8409 Audio DKMS (Debian/Ubuntu on Intel Macs)
 
 This repository provides a **DKMS-based audio enablement** for Intel Macs (iMac, MacBook, Mac mini, iMac Pro, Mac Pro) that use **Cirrus Logic CS8409** HDA audio with a **CS42L42** companion codec — the common setup on many **T2-era Macs (2018–2020)** running **Linux (Debian/Ubuntu)**.
