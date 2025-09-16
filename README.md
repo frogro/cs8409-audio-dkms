@@ -135,7 +135,9 @@ sudo modprobe -r snd_hda_codec_cs8409 snd_hda_codec snd_hda_intel || true
 sudo modprobe snd_hda_intel && sudo modprobe snd_hda_codec && sudo modprobe snd_hda_codec_cs8409
 
 # Remove optional sleep hook + config (if installed)
-sudo rm -f /usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh
+sudo rm -f /usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh \
+           /lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh
+
 sudo rm -f /etc/default/xhci-s2idle.default
 ```
 
