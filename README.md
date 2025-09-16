@@ -17,7 +17,7 @@ On these machines, users frequently hit **“no sound”** because the Linux ker
 ## Supported hardware (examples)
 
 Intel Macs with **CS8409 + CS42L42** audio path, typically:
-- **iMac 2019/2020** (`iMac19,1`, `iMac20,1`, `iMac20,2`)
+- **iMac 2019/2020** (`iMac19,1`, `iMac19,2`, `iMac20,1`, `iMac20,2`)
 - **MacBook Pro 2018–2020** (`MacBookPro15,x`, `MacBookPro16,x`)
 - **Mac mini 2018** (`Macmini8,1`)
 - **iMac Pro** (`iMacPro1,1`)
@@ -63,7 +63,7 @@ Intel Macs with **CS8409 + CS42L42** audio path, typically:
 Install helpers (Debian/Ubuntu):
 ```bash
 sudo apt update
-sudo apt install -y git build-essential dkms kmod rsync patch pciutils alsa-utils                     pavucontrol pulseaudio-utils                     linux-headers-$(uname -r)
+sudo apt install -y git build-essential dkms kmod rsync patch pciutils alsa-utils pavucontrol pulseaudio-utils linux-headers-$(uname -r)
 ```
 
 > **Secure Boot (Debian/Ubuntu)**: If Secure Boot is **enabled**, unsigned DKMS modules **won’t load**. Either **disable Secure Boot** in firmware, **or** enroll a **Machine Owner Key (MOK)** and sign the DKMS module (Ubuntu typically prompts for MOK enrollment during dkms builds).
@@ -93,8 +93,8 @@ Usage: sudo ./install.sh [--kver <ver>]... [--all-installed] [--no-reload] [--no
 Default: build for the running kernel and apply suspend patch
 ```
 
-- `--kver <ver>` — build for a specific kernel version (can be used multiple times).
-- `--all-installed` — build for **all** installed kernels on this system.
+- `--kver <ver>` — build for a specific kernel version (can be used multiple times / only relevant if you use multiple kernel environments).
+- `--all-installed` — build for **all** installed kernels on this system (only relevant if you use multiple kernel environments).
 - `--no-reload` — do **not** reload the driver stack immediately after install.
 - `--no-suspend-patch` — **keep** `snd-intel-dspcfg.dsp_driver=1` for audio, but **skip** `mem_sleep_default=s2idle` and the xHCI sleep hook.
 - `-h`, `--help` — show usage.
