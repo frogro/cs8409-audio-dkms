@@ -54,8 +54,6 @@ Intel Macs with **CS8409 + CS42L42** audio path, typically:
 
 ## Requirements
 
-> This repo **does not** include a kernel checker/updater. If you need a newer kernel, use your distro’s approach (e.g., Debian Backports or Ubuntu HWE).
-
 - **Debian 12/13** or **Ubuntu 22.04/24.04** (or newer)
 - **Kernel headers** for your running kernel (e.g. `linux-headers-$(uname -r)`)
 - Tools: `git`, `build-essential` (or `base-devel` equivalent), `dkms`, `kmod`, `rsync`, `patch`, `pciutils`, `alsa-utils`, `pavucontrol`, `pulseaudio-utils`
@@ -93,11 +91,10 @@ Usage: sudo ./install.sh [--kver <ver>]... [--all-installed] [--no-reload] [--no
 Default: build for the running kernel and apply suspend patch
 ```
 
-- `--kver <ver>` — build for a specific kernel version (can be used multiple times / only relevant if you use multiple kernel environments).
-- `--all-installed` — build for **all** installed kernels on this system (only relevant if you use multiple kernel environments).
+- `--kver <ver>` — build for a specific kernel version (can be used multiple times).
+- `--all-installed` — build for **all** installed kernels on this system.
 - `--no-reload` — do **not** reload the driver stack immediately after install.
 - `--no-suspend-patch` — **keep** `snd-intel-dspcfg.dsp_driver=1` for audio, but **skip** `mem_sleep_default=s2idle` and the xHCI sleep hook.
-- `-h`, `--help` — show usage.
 
 **When to use these options (practical rationale)**
 
