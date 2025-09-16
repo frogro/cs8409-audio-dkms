@@ -127,10 +127,10 @@ Default: build for the running kernel and apply suspend patch
 
 ```bash
 # Discover the module as registered by DKMS
-dkms status | grep -i cs8409 || true
+sudo dkms status | grep -i cs8409 || true
 
 # Example (adjust -m/-v to match your system):
-sudo dkms remove -m snd-hda-codec-cs8409 -v 1.0 --all
+sudo dkms remove -m snd-hda-codec-cs8409 -v 1.0+dkms --all
 
 # Unload/reload HDA stack (or just reboot)
 sudo modprobe -r snd_hda_codec_cs8409 snd_hda_codec snd_hda_intel || true
