@@ -1,39 +1,20 @@
+# .github/workflows/shellcheck.yml
 name: ShellCheck
 
 on:
   push:
     branches: [ main, master ]
-    paths:
-      - "**/*.sh"
-      - "install.sh"
-      - ".github/workflows/shellcheck.yml"
   pull_request:
     branches: [ main, master ]
-    paths:
-      - "**/*.sh"
-      - "install.sh"
-  workflow_dispatch: {}   # <— neu
+  workflow_dispatch: {}   # manuell in Actions startbar
 
 jobs:
   shellcheck:
-    name: Lint shell scripts with ShellCheck
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install ShellCheck
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y shellcheck
-
-      - name: Run ShellCheck
-        run: |
-          set -euo pipefail
-          files="$(git ls-files '*.sh' | tr '\n' ' ')"
-          [ -f install.sh ] && files="$files install.sh"
-          if [ -n "$files" ]; then
-            shellcheck -S style $files
-          else
-            echo "No shell scripts found."
-          fi
+      - uses: actions/checkout@v4
+      - name: Run ShellCheck (prebuilt action)
+        uses: ludeeus/action-shellcheck@v2
+        env:
+          # Regeln/Schweregrad nach Wunsch:
+          SHELLCHECK_OPTS: -S style -e SC1091
