@@ -20,7 +20,20 @@ need_root "$@"
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 CFG_DIR="/etc/default"
 CFG_FILE="${CFG_DIR}/xhci-s2idle"
-HOOK_DST="/usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh"
+choose_sleep_dir() {
+  for d in /usr/lib/systemd/system-sleep /lib/systemd/system-sleep; do
+    # prefer existing dir; otherwise try to create it
+    if [ -d "$d" ] || mkdir -p "$d" 2>/dev/null; then
+      echo "$d"
+      return 0
+    fi
+  done
+  # fallback – should exist on essentially all modern usrmerge systems
+  echo "/usr/lib/systemd/system-sleep"
+}
+
+HOOK_DIR="$(choose_sleep_dir)"
+HOOK_DST="${HOOK_DIR}/98-xhci-s2idle-unbind.sh"
 HOOK_SRC="${SCRIPT_DIR}/hooks/98-xhci-s2idle-unbind.sh"
 FALLBACK_SRC="${SCRIPT_DIR}/tools/98-xhci-s2idle-unbind.fallback.sh"
 
