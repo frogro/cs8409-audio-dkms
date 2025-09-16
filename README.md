@@ -126,19 +126,33 @@ Default: build for the running kernel and apply suspend patch
 ## Uninstall / Revert
 
 ```bash
-# Discover the module as registered by DKMS
-sudo dkms status | grep -i cs8409 || true
+# 0) Hard-stop user-space audio
+systemctl --user stop wireplumber pipewire pipewire-pulse 2>/dev/null || true
+pkill -x wireplumber pipewire pipewire-pulse 2>/dev/null || true
 
-# Example (adjust -m/-v to match your system):
+# 1) Check who is holding /dev/snd/*
+fuser -v /dev/snd/* 2>/dev/null || true
+
+# 2) Unbind HDA PCI functions (PCH + dGPU HDMI audio; ignore if not present)
+for bdf in 0000:00:1f.3 0000:01:00.1; do
+  if [ -e /sys/bus/pci/devices/$bdf/driver ]; then
+    echo $bdf | sudo tee /sys/bus/pci/devices/$bdf/driver/unbind
+  fi
+done
+
+# 3) Unload modules (order matters; ignore errors)
+sudo modprobe -r snd_hda_codec_cs8409 snd_hda_codec_hdmi snd_hda_codec snd_hda_intel || true
+
+# 4) Remove the DKMS package
 sudo dkms remove -m snd-hda-codec-cs8409 -v 1.0+dkms --all
 
-# Unload/reload HDA stack (or just reboot)
-sudo modprobe -r snd_hda_codec_cs8409 snd_hda_codec snd_hda_intel || true
-sudo modprobe snd_hda_intel && sudo modprobe snd_hda_codec && sudo modprobe snd_hda_codec_cs8409
-
-# Remove optional sleep hook + config (if installed)
-sudo rm -f {/usr/lib,/lib}/systemd/system-sleep/98-xhci-s2idle-unbind.sh
+# 5) Remove hook + config
+sudo rm -f /usr/lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh /lib/systemd/system-sleep/98-xhci-s2idle-unbind.sh
 sudo rm -f /etc/default/xhci-s2idle
+
+# 6) Refresh module dependency maps (initramfs update not needed here)
+sudo depmod -a
+
 ```
 
 ### Revert the recommended GRUB kernel parameters (optional)
