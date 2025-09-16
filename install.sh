@@ -140,7 +140,7 @@ if [[ $DO_SUSPEND_PATCH -eq 1 ]]; then
   bash "${REPO_DIR}/apply-suspend-patch.sh"
   ok "Suspend patch done"
 else
-  warn "--no-suspend-patch specified: skipping s2idle/xHCI hook and GRUB flags"
+  warn "--no-suspend-patch specified: skipping s2idle/xHCI hook and mem_sleep_default; keeping dsp flag for audio"
 fi
 
 # --- Reboot-Dialog ganz zum Schluss ----------------------------------------
