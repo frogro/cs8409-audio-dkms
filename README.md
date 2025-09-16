@@ -81,7 +81,7 @@ After installation, you should see devices under `aplay -l`. If audio is muted, 
 
 ---
 
-## Command-line options (exactly as in `install.sh`)
+## Command-line options
 
 > These options select **which kernel versions** the DKMS module is built for and how the install behaves.  
 > They **do not** check or upgrade your kernel.
