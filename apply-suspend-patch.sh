@@ -5,6 +5,12 @@
 # - Writes /etc/default/xhci-s2idle with robust autodetected TARGETS (so dass es "passt")
 # - Hook selbst behält seine Autodetektion als Fallback bei (Logik unverändert)
 
+# Option parsing
+MODE="full"  # full = dsp flag + mem_sleep_default + hook; audio-only = dsp flag only
+if [ "$1" = "--audio-only" ]; then
+  MODE="audio-only"
+  shift
+fi
 set -euo pipefail
 IFS=$'\n\t'
 
@@ -43,7 +49,12 @@ ensure_grub_flags() {
   # read current line (inside quotes)
   local cur; cur="$(sed -nE 's/^GRUB_CMDLINE_LINUX_DEFAULT="(.*)".*/\1/p' "$f")"
   # flags we need (dmic_detect ist veraltet → dsp_driver=1)
-  local need=("snd-intel-dspcfg.dsp_driver=1" "mem_sleep_default=s2idle")
+  local need=()
+  if [ "$MODE" = "audio-only" ]; then
+    need=("snd-intel-dspcfg.dsp_driver=1")
+  else
+    need=("snd-intel-dspcfg.dsp_driver=1" "mem_sleep_default=s2idle")
+  fi
   local new="$cur"
   for fl in "${need[@]}"; do
     if [[ "$new" != *"$fl"* ]]; then
