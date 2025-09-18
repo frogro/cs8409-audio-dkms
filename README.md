@@ -6,7 +6,7 @@ On these machines, users frequently hit **“no sound”** because the Linux ker
 
 - **Why this repo?** It is a **consolidation and forward-evolution** of existing **community solutions** for CS8409/CS42L42 on T2 Macs. It **integrates** community driver work and adds small glue fixes, wrapped as a **DKMS module** so that audio **keeps working after kernel updates** — and includes a **suspend/resume fix** for the notorious “no audio after suspend” issue.
 - **What you get**
-  - **Sound out of the box** on supported Macs (speakers/headphones, HDA controls).
+  - **Sound out of the box** on supported Macs (speakers/headphones, mic, HDA controls).
   - **DKMS auto-rebuild** across kernel upgrades (solves “no sound after kernel update”).
   - **Suspend/resume fix** (“no sound after suspend”), via a minimal **systemd sleep hook** and recommended runtime settings for T2 hardware.
   - A clean uninstall path.
