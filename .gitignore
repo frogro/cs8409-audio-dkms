@@ -1,0 +1,21 @@
+# kbuild / kernel module outputs
+*.o
+*.o.cmd
+*.ko
+*.ko.*
+*.mod
+*.mod.*
+*.mod.c
+.*.cmd
+*.symvers
+Module.symvers
+modules.order
+
+# build dirs
+/build/
+/out/
+/dist/
+
+# editors / OS
+*.swp
+.DS_Store
