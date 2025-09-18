@@ -1,1 +1,0 @@
-cmd_/home/frank/Dokumente/jioiij/mic/snd-hda-codec-cs8409.mod := printf '%s\n'   patch_cs8409.o patch_cs8409-tables.o | awk '!x[$$0]++ { print("/home/frank/Dokumente/jioiij/mic/"$$0) }' > /home/frank/Dokumente/jioiij/mic/snd-hda-codec-cs8409.mod
