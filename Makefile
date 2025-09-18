@@ -12,3 +12,5 @@ snd-hda-codec-cs8409-y := \
 # 	$(MAKE) -C $(KDIR) M=$(PWD) modules
 # clean:
 # 	$(MAKE) -C $(KDIR) M=$(PWD) clean
+ccflags-y += -I$(src)
+ccflags-y += -Wno-error

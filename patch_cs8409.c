@@ -14,6 +14,7 @@
 #include <linux/iopoll.h>
 
 #include "patch_cs8409.h"
+static void cs42l42_capture_one_time_init(struct hda_codec *codec);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("CS8409 Apple HDA codec (DKMS build)");
@@ -1213,6 +1214,7 @@ void cs8409_cs42l42_fixups(struct hda_codec *codec, const struct hda_fixup *fix,
 		break;
 	case HDA_FIXUP_ACT_INIT:
 		cs8409_cs42l42_hw_init(codec);
+        cs42l42_capture_one_time_init(codec);
 		spec->init_done = 1;
 		if (spec->init_done && spec->build_ctrl_done
 			&& !spec->scodecs[CS8409_CODEC0]->hp_jack_in)
@@ -1507,3 +1509,34 @@ module_hda_codec_driver(cs8409_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Cirrus Logic HDA bridge");
+
+/* One-time capture init to ensure mic path comes up reliably */
+static void cs42l42_capture_one_time_init(struct hda_codec *codec)
+{
+    struct cs8409_spec *spec = codec->spec;
+    struct sub_codec *cs42l42;
+
+    if (!spec)
+        return;
+
+    cs42l42 = spec->scodecs[CS8409_CODEC0];
+    if (!cs42l42)
+        return;
+
+    /* Make sure HSBIAS sense is enabled (typical Apple default) */
+    if (!cs42l42->hsbias_hiz)
+        cs42l42->hsbias_hiz = 0x0020;
+
+    /* Wake codec & set baseline jack-detect state */
+    cs8409_i2c_write(cs42l42, CS42L42_HSBIAS_SC_AUTOCTL, cs42l42->hsbias_hiz);
+    cs8409_i2c_write(cs42l42, CS42L42_WAKE_CTL, 0x00C1);
+    cs8409_i2c_write(cs42l42, CS42L42_WAKE_CTL, 0x00C0);
+    (void)cs8409_i2c_read(cs42l42, CS42L42_TSRS_PLUG_STATUS);
+    cs8409_i2c_write(cs42l42, CS42L42_TSRS_PLUG_INT_MASK, 0xF3);
+
+    /* Ensure ADC not stuck muted: write current target volume once */
+    if (!cs42l42->vol[CS42L42_ADC_VOL_OFFSET])
+        cs42l42->vol[CS42L42_ADC_VOL_OFFSET] = 0x50; /* mittlerer Wert */
+    cs8409_i2c_write(cs42l42, CS42L42_ADC_VOLUME,
+                     cs42l42->vol[CS42L42_ADC_VOL_OFFSET]);
+}
