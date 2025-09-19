@@ -74,7 +74,7 @@ sudo apt install -y git build-essential wget dkms kmod rsync patch pciutils alsa
 ```bash
 git clone https://github.com/frogro/cs8409-audio-dkms
 cd cs8409-audio-dkms
-chmod +x install.sh
+sudo chmod +x install.sh
 sudo ./install.sh
 ```
 
