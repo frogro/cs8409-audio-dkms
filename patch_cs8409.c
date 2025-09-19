@@ -1001,6 +1001,8 @@ static void cs8409_cs42l42_jack_unsol_event(struct hda_codec *codec, unsigned in
 	if (cs42l42_jack_unsol_event(cs42l42)) {
 		snd_hda_set_pin_ctl(codec, CS8409_CS42L42_SPK_PIN_NID,
 				    cs42l42->hp_jack_in ? 0 : PIN_OUT);
+		snd_hda_set_pin_ctl(codec, CS8409_CS42L42_HP_PIN_NID,
+			    cs42l42->hp_jack_in ? PIN_OUT : 0);
 		/* Report jack*/
 		jk = snd_hda_jack_tbl_get_mst(codec, CS8409_CS42L42_HP_PIN_NID, 0);
 		if (jk)
