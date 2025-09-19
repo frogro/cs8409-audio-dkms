@@ -57,12 +57,12 @@ Intel Macs with **CS8409 + CS42L42** audio path, typically:
 
 - **Debian 12/13** or **Ubuntu 22.04/24.04** (or newer)
 - **Kernel headers** for your running kernel (e.g. `linux-headers-$(uname -r)`)
-- Tools: `git`, `build-essential` (or `base-devel` equivalent), `dkms`, `kmod`, `rsync`, `patch`, `pciutils`, `alsa-utils`, `pavucontrol`, `pulseaudio-utils`
+- Tools: `git`, `build-essential` (or `base-devel` equivalent), `wget`, `dkms`, `kmod`, `rsync`, `patch`, `pciutils`, `alsa-utils`, `pavucontrol`, `pulseaudio-utils`
 
 Install helpers (Debian/Ubuntu):
 ```bash
 sudo apt update
-sudo apt install -y git build-essential dkms kmod rsync patch pciutils alsa-utils pavucontrol pulseaudio-utils linux-headers-$(uname -r)
+sudo apt install -y git build-essential wget dkms kmod rsync patch pciutils alsa-utils pavucontrol pulseaudio-utils linux-headers-$(uname -r)
 ```
 
 > **Secure Boot (Debian/Ubuntu)**: If Secure Boot is **enabled**, unsigned DKMS modules **won’t load**. Either **disable Secure Boot** in firmware, **or** enroll a **Machine Owner Key (MOK)** and sign the DKMS module (Ubuntu typically prompts for MOK enrollment during dkms builds).
